@@ -1,8 +1,8 @@
 package day16
 
 import onBits
+import timed
 import java.io.File
-import java.util.*
 import kotlin.math.max
 
 data class Valve(
@@ -11,7 +11,10 @@ data class Valve(
     val edgesTo: Set<String>
 )
 
-fun task1(valves: List<Valve>, initialValve: String, time: Int): Long {
+/**
+ * Returns max possible pressure after {@param time} time units split by which valves have been activated
+ */
+fun maxPressure(valves: List<Valve>, initialValve: String, time: Int): LongArray {
     val valves = valves.sortedByDescending { it.rate }
     val edges = valves.map { valve ->
         valve.edgesTo.map { id -> valves.indexOfFirst { it.id == id } }
@@ -48,69 +51,9 @@ fun task1(valves: List<Valve>, initialValve: String, time: Int): Long {
         }
     }
 
-    return dp[time].maxOf { it.max() }
-}
-
-fun task2(valves: List<Valve>, initialValve: String, time: Int): Long {
-    val valves = valves.sortedByDescending { it.rate }
-    val edges = valves.map { valve ->
-        valve.edgesTo.map { id -> valves.indexOfFirst { it.id == id } }
+    return LongArray(maskSize) { mask ->
+        valves.indices.maxOf { dp[time][it][mask] }
     }
-
-    val maskSize = 1 shl valves.count { it.rate > 0 }
-    val sums = LongArray(maskSize) { mask ->
-        valves.slice(mask.onBits()).sumOf { it.rate }
-    }
-    var dpNext = Array(valves.size) { Array(valves.size) { LongArray(maskSize) } }
-    fun update(myPosition: Int, elephantPosition: Int, mask: Int, value: Long) {
-        dpNext[myPosition][elephantPosition][mask] = max(dpNext[myPosition][elephantPosition][mask], value)
-    }
-
-    val initialPosition = valves.indexOfFirst { it.id == initialValve }
-    var dp = Array(valves.size) { Array(valves.size) { LongArray(maskSize) { -1 } } }
-    dp[initialPosition][initialPosition][0] = 0
-
-    data class Move(
-        val newPosition: Int,
-        val newMask: Int
-    )
-
-    fun movesFrom(position: Int, mask: Int): List<Move> =
-        edges[position].map { Move(it, mask) } + Move(position, mask) + if (valves[position].rate > 0) {
-            listOf(Move(position, mask or (1 shl position)))
-        } else emptyList()
-
-    for (t in 0 until time) {
-        dpNext.forEach { it.forEach { Arrays.fill(it, -1) } }
-
-        for (myPosition in valves.indices) {
-            for (elephantPosition in valves.indices) {
-                dp[myPosition][elephantPosition].forEachIndexed { mask, value ->
-                    if (value >= 0) {
-                        val nextValue = value + sums[mask]
-                        val myMoves = movesFrom(myPosition, mask)
-                        val elephantMoves = movesFrom(elephantPosition, mask)
-                        for (myMove in myMoves) {
-                            for (elephantMove in elephantMoves) {
-                                update(
-                                    myMove.newPosition,
-                                    elephantMove.newPosition,
-                                    myMove.newMask or elephantMove.newMask,
-                                    nextValue
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        val tmp = dp
-        dp = dpNext
-        dpNext = tmp
-    }
-
-    return dp.maxOf { it.maxOf { it.max() } }
 }
 
 fun main() {
@@ -129,11 +72,28 @@ fun main() {
                 Valve(id, rate.toLong(), edges.split(", ").toSet())
             }
 
-        val task1 = task1(valves, "AA", 30)
-
+        val task1 = timed { maxPressure(valves, "AA", 30).max() }
         println(task1) // 2183
 
-        val task2 = task2(valves, "AA", 26)
+        val task2 = timed {
+            val dp = maxPressure(valves, "AA", 26)
+            val nonZeroValves = valves.count { it.rate > 0 }
+
+            dp.indices
+                .sortedBy { it.countOneBits() }
+                .forEach { mask ->
+                    repeat(nonZeroValves) { valve ->
+                        val t = mask or (1 shl valve)
+                        dp[t] = max(dp[t], dp[mask])
+                    }
+                }
+
+            val negateMask = (1 shl nonZeroValves) - 1
+
+            dp.mapIndexed { mask, value ->
+                value + dp[mask xor negateMask]
+            }.max()
+        }
 
         println(task2) // 2911
     }
