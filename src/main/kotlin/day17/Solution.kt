@@ -1,7 +1,6 @@
 package day17
 
 import indicesOf
-import repeatIndefinitely
 import java.io.File
 
 fun List<String>.toPoints(): List<Point> = reversed().flatMapIndexed { rowShift, line ->
@@ -70,18 +69,35 @@ fun main() {
     ).forEach { input ->
         println("Solution for '$input' file")
 
-        val moveSupplier = File(input).readText().repeatIndefinitely().iterator()
-        val shapesSupplier = shapes.repeatIndefinitely().iterator()
-
+        val moves = File(input).readText()
         val field = Field(7)
 
-        repeat(2022) {
-            val nextShape = shapesSupplier.next()
-            var position = Point(field.height + 3, 2)
-            while (true) {
-                val jetMove = moveSupplier.next()
+        data class State(
+            val nextShape: Int,
+            val nextMoveIndex: Int,
+            val sinkInBy: Int
+        )
 
-                val horizontalShift = position.copy(column = position.column + if (jetMove == '<') -1 else 1)
+        data class StateResult(
+            val stoneNumber: Long,
+            val heightAfter: Long
+        )
+
+        val states = HashMap<State, StateResult>()
+
+        var stones = 0L
+        var moveIndex = 0
+        var additionalHeight = 0L
+        val N = 1000000000000
+        while (stones < N) {
+            val moveIndexAtTheBeginning = moveIndex
+            val shapeIndex = (stones % shapes.size).toInt()
+            val nextShape = shapes[shapeIndex]
+            var position = Point(field.height + 3, 2)
+
+            while (true) {
+                val horizontalShift = position.copy(column = position.column + if (moves[moveIndex] == '<') -1 else 1)
+                moveIndex = (moveIndex + 1) % moves.length
                 if (nextShape.shiftedBy(horizontalShift).all { field.isFree(it) }) {
                     position = horizontalShift
                 }
@@ -92,13 +108,27 @@ fun main() {
                 else
                     break
             }
-            nextShape.shiftedBy(position).forEach { field.markOccupied(it) }
 
-//            println("After stone ${it + 1}:")
+            val state = State(shapeIndex, moveIndexAtTheBeginning, field.height + 3 - position.row)
+
+            nextShape.shiftedBy(position).forEach { field.markOccupied(it) }
+            stones++
+
+            val t = states[state]
+            if (t != null && shapeIndex == 0) {
+                val cycleLength = stones - t.stoneNumber
+                val shortcuts = (N - stones) / cycleLength
+                additionalHeight += (field.height - t.heightAfter) * shortcuts
+                stones += cycleLength * shortcuts
+            } else {
+                states[state] = StateResult(stones, field.height.toLong())
+            }
+
+//            println("After stone $stones:")
 //            field.visualize().forEach(::println)
         }
 
-        val task1 = field.height
+        val task1 = field.height + additionalHeight
 
         println(task1) // 3163
     }
